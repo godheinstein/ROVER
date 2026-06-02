@@ -15,6 +15,16 @@ export interface MatrixCriterion {
   higherIsBetter: boolean; // scoring direction
 }
 
+/**
+ * How raw-spec criteria (no fixed 0-5 scale) are turned into a 0-100 score:
+ * - "proportional": value as a share of the best value (best = 5, others scale
+ *   proportionally). Intuitive default — a 5kg payload vs a 6.5kg best = 3.8/5.
+ * - "relative": min-max spread (worst = 0, best = 5). Maximizes contrast but
+ *   makes the lowest value look bad even when it's objectively fine.
+ * Curated 1-5 score fields and yes/no fields are always scored absolutely.
+ */
+export type NormalizationMode = "proportional" | "relative";
+
 export interface CriterionScore {
   criterionId: string;
   fieldKey: string;
@@ -87,7 +97,8 @@ function toNumber(value: unknown): number | null {
 // Compute normalized (0-100) scores and weighted totals for the given robots.
 export function computeMatrix(
   robots: any[],
-  criteria: MatrixCriterion[]
+  criteria: MatrixCriterion[],
+  mode: NormalizationMode = "proportional"
 ): RobotMatrixResult[] {
   const totalWeight = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
 
@@ -102,6 +113,16 @@ export function computeMatrix(
     }
   }
 
+  // Fields with a fixed scale are scored ABSOLUTELY so the displayed value
+  // matches the stored data (a curated 4/5 shows as 4.0/5, regardless of what
+  // the other robots scored). Raw specs with no natural max stay relative.
+  const absoluteMaxFor = (fieldKey: string): number | undefined => {
+    const field = getField(fieldKey);
+    if (field?.scoreMax) return field.scoreMax; // curated 1-5 scores
+    if (field?.format === "boolean") return 1; // yes/no -> 5 or 0
+    return undefined;
+  };
+
   return robots
     .map((robot) => {
       const perCriterion: CriterionScore[] = criteria.map((c) => {
@@ -110,12 +131,30 @@ export function computeMatrix(
         let normalized = 0;
         const hasValue = raw !== null;
 
-        if (hasValue && range) {
+        const absMax = absoluteMaxFor(c.fieldKey);
+
+        if (hasValue && absMax) {
+          // Absolute: value as a fraction of the fixed maximum.
+          const pct = Math.min(1, Math.max(0, (raw as number) / absMax));
+          normalized = (c.higherIsBetter ? pct : 1 - pct) * 100;
+        } else if (hasValue && range) {
+          const value = raw as number;
           if (range.max === range.min) {
             // Everyone ties — award full marks so weight still counts.
             normalized = 100;
+          } else if (mode === "proportional") {
+            // Share of the best value (no artificial zero for the lowest).
+            let pct: number;
+            if (c.higherIsBetter) {
+              pct = range.max > 0 ? value / range.max : 0;
+            } else {
+              // Lower is better: best (smallest) = 1, scaled by best/value.
+              pct = value <= range.min ? 1 : range.min / value;
+            }
+            normalized = Math.min(1, Math.max(0, pct)) * 100;
           } else {
-            const pct = ((raw as number) - range.min) / (range.max - range.min);
+            // Relative min-max spread (worst = 0, best = 100).
+            const pct = (value - range.min) / (range.max - range.min);
             normalized = (c.higherIsBetter ? pct : 1 - pct) * 100;
           }
         }

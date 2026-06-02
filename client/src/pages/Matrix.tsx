@@ -24,6 +24,7 @@ import {
   newCriterionId,
   firstUnusedField,
   type MatrixCriterion,
+  type NormalizationMode,
 } from "@/lib/matrix";
 import { NUMERIC_FIELDS, FIELD_GROUPS, getField } from "@/lib/robotFields";
 import { robotColor } from "@/lib/robotDisplay";
@@ -41,11 +42,17 @@ function fieldLabel(key: string): string {
   return f ? `${f.label}${f.unit ? ` (${f.unit})` : ""}` : key;
 }
 
+// Display a normalized 0–100 score on a 0–5 scale (one decimal).
+function to5(normalized: number): string {
+  return (normalized / 20).toFixed(1);
+}
+
 export default function Matrix() {
   const robots = trpc.robots.list.useQuery();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [initialized, setInitialized] = useState(false);
   const [criteria, setCriteria] = useState<MatrixCriterion[]>(() => defaultCriteria());
+  const [normMode, setNormMode] = useState<NormalizationMode>("proportional");
   const [expanded, setExpanded] = useState<number | null>(null);
 
   // Seed selection from ?ids=, then the selection carried over from the Compare
@@ -73,8 +80,8 @@ export default function Matrix() {
   const available = (robots.data || []).filter((r: any) => !selectedIds.includes(r.id));
 
   const results = useMemo(
-    () => computeMatrix(selectedRobots, criteria),
-    [selectedRobots, criteria]
+    () => computeMatrix(selectedRobots, criteria, normMode),
+    [selectedRobots, criteria, normMode]
   );
 
   // Weights are treated as percentages that should add up to 100. The matrix
@@ -127,8 +134,8 @@ export default function Matrix() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Evaluation Matrix</h2>
           <p className="text-slate-600">
-            Score robots on the criteria that matter to you. Each criterion is normalized 0–100
-            across the selected robots; tune the weights to see rankings update live.
+            Score robots on the criteria that matter to you. Each criterion is scored out of 5
+            relative to the selected robots; tune the weights to see the weighted ranking update live.
           </p>
         </div>
 
@@ -201,6 +208,23 @@ export default function Matrix() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Scoring method */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-medium text-slate-700">Spec scoring method</span>
+              <Select value={normMode} onValueChange={(v) => setNormMode(v as NormalizationMode)}>
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="proportional">Proportional — share of the best value</SelectItem>
+                  <SelectItem value="relative">Relative — min–max spread (max contrast)</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-slate-500">
+                Applies to raw specs (payload, reach…). 1–5 scores and yes/no fields are always absolute.
+              </span>
+            </div>
+
             {/* Weight total / balance indicator */}
             {criteria.length > 0 && (
               <div className="flex items-center justify-between gap-3 flex-wrap rounded-md border bg-slate-50 px-4 py-2">
@@ -352,7 +376,7 @@ export default function Matrix() {
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-medium text-slate-700">{fieldLabel(sc.fieldKey)}</span>
                             <span className="text-slate-500">
-                              {sc.hasValue ? `raw ${sc.rawValue}` : "no data"} · {sc.normalized}/100 ·{" "}
+                              {sc.hasValue ? `raw ${sc.rawValue}` : "no data"} · {to5(sc.normalized)}/5 ·{" "}
                               {crit ? crit.weight : 0}%
                             </span>
                           </div>
@@ -376,7 +400,7 @@ export default function Matrix() {
         {results.length > 0 && criteria.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Matrix (normalized scores)</CardTitle>
+              <CardTitle className="text-lg">Matrix (criterion scores out of 5)</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -388,6 +412,7 @@ export default function Matrix() {
                       {results.map((res) => (
                         <TableHead key={res.robot.id} className="text-center">
                           {res.robot.name}
+                          <div className="text-xs font-normal text-slate-400">score /5</div>
                         </TableHead>
                       ))}
                     </TableRow>
@@ -406,7 +431,7 @@ export default function Matrix() {
                           const sc = res.perCriterion.find((s) => s.criterionId === c.id);
                           return (
                             <TableCell key={res.robot.id} className="text-center">
-                              {sc?.hasValue ? sc.normalized : <span className="text-slate-300">—</span>}
+                              {sc?.hasValue ? to5(sc.normalized) : <span className="text-slate-300">—</span>}
                             </TableCell>
                           );
                         })}
@@ -414,7 +439,7 @@ export default function Matrix() {
                     ))}
                     <TableRow className="bg-slate-100 font-bold">
                       <TableCell colSpan={2} className="sticky left-0 bg-slate-100">
-                        Weighted Total
+                        Weighted Total <span className="text-xs font-normal text-slate-400">/100</span>
                       </TableCell>
                       {results.map((res) => (
                         <TableCell key={res.robot.id} className="text-center text-lg">
