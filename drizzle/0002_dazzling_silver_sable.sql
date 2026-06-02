@@ -1,0 +1,1 @@
+ALTER TABLE `robots` ADD `website_url` varchar(512);

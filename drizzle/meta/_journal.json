@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1763977247359,
+      "tag": "0000_hot_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1763977306447,
+      "tag": "0001_aberrant_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1764035367853,
+      "tag": "0002_dazzling_silver_sable",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1770088481448,
+      "tag": "0003_nifty_quicksilver",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1780045144040,
+      "tag": "0004_narrow_bedlam",
+      "breakpoints": true
+    }
+  ]
+}
