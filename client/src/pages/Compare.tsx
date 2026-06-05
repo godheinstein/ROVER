@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { Fragment, useState, useEffect, useMemo } from "react";
-import { X, ExternalLink, SlidersHorizontal, Plus } from "lucide-react";
+import { X, ExternalLink, SlidersHorizontal, Plus, Download } from "lucide-react";
 import { Link } from "wouter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import AppNav from "@/components/AppNav";
 import ComparisonCharts from "@/components/ComparisonCharts";
 import FieldMultiSelect from "@/components/FieldMultiSelect";
+import { buildComparisonCsv, downloadCsv } from "@/lib/csv";
 import { ROBOT_FIELDS, FIELD_GROUPS, ROBOT_TYPE_LABELS, type RobotField } from "@/lib/robotFields";
 import { loadSelection, saveSelection } from "@/lib/selection";
 import {
@@ -272,11 +273,26 @@ export default function Compare() {
                       <CardTitle>Comparison Table</CardTitle>
                       <CardDescription>The criteria you choose, as rows — one column per robot.</CardDescription>
                     </div>
-                    <FieldMultiSelect
-                      fields={availableFields}
-                      selected={selectedFields}
-                      onChange={setSelectedFields}
-                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <FieldMultiSelect
+                        fields={availableFields}
+                        selected={selectedFields}
+                        onChange={setSelectedFields}
+                      />
+                      <Button
+                        variant="outline"
+                        disabled={selectedFieldDefs.length === 0}
+                        onClick={() =>
+                          downloadCsv(
+                            "robot-comparison.csv",
+                            buildComparisonCsv(compareRobots, selectedFieldDefs)
+                          )
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export CSV
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -322,8 +338,22 @@ export default function Compare() {
             <TabsContent value="specs">
               <Card>
                 <CardHeader>
-                  <CardTitle>Specifications</CardTitle>
-                  <CardDescription>Only fields with data for the selected robots are shown.</CardDescription>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <CardTitle>Specifications</CardTitle>
+                      <CardDescription>Only fields with data for the selected robots are shown.</CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      disabled={availableFields.length === 0}
+                      onClick={() =>
+                        downloadCsv("robot-specifications.csv", buildComparisonCsv(compareRobots, availableFields))
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
