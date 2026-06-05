@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AppNav from "@/components/AppNav";
 import ComparisonCharts from "@/components/ComparisonCharts";
+import FieldMultiSelect from "@/components/FieldMultiSelect";
 import { ROBOT_FIELDS, FIELD_GROUPS, ROBOT_TYPE_LABELS, type RobotField } from "@/lib/robotFields";
 import { loadSelection, saveSelection } from "@/lib/selection";
 import {
@@ -97,8 +98,20 @@ function renderCell(robot: any, field: RobotField) {
   }
 }
 
+const DEFAULT_CHART_FIELDS = [
+  "dofTotal",
+  "payloadPerArm",
+  "usablePayload",
+  "reach",
+  "armDof",
+  "batteryHours",
+  "maxSpeed",
+  "ros2Support",
+];
+
 export default function Compare() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedFields, setSelectedFields] = useState<string[]>(DEFAULT_CHART_FIELDS);
   const robots = trpc.robots.list.useQuery();
 
   useEffect(() => {
@@ -165,6 +178,19 @@ export default function Compare() {
     }).filter((g) => g.fields.length > 0);
   }, [compareRobots]);
 
+  // Flat list of fields that at least one compared robot has data for — these
+  // are the criteria the user can choose to chart / tabulate.
+  const availableFields = useMemo(
+    () => visibleFieldsByGroup.flatMap((g) => g.fields),
+    [visibleFieldsByGroup]
+  );
+
+  // Fields selected for the focused comparison table (intersected with data).
+  const selectedFieldDefs = useMemo(
+    () => availableFields.filter((f) => selectedFields.includes(f.key)),
+    [availableFields, selectedFields]
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <AppNav />
@@ -217,11 +243,80 @@ export default function Compare() {
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
               <TabsTrigger value="overview">Charts & Overview</TabsTrigger>
+              <TabsTrigger value="table">Comparison Table</TabsTrigger>
               <TabsTrigger value="specs">Full Specifications</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview">
-              <ComparisonCharts robots={compareRobots} />
+            <TabsContent value="overview" className="space-y-4">
+              <Card>
+                <CardContent className="py-4 flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-medium text-slate-700">Criteria to show</span>
+                  <FieldMultiSelect
+                    fields={availableFields}
+                    selected={selectedFields}
+                    onChange={setSelectedFields}
+                  />
+                  <span className="text-xs text-slate-500">
+                    Numeric criteria render as bar charts; others (ROS2 support, sensors…) as a table.
+                  </span>
+                </CardContent>
+              </Card>
+              <ComparisonCharts robots={compareRobots} selectedFields={selectedFields} />
+            </TabsContent>
+
+            <TabsContent value="table" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <CardTitle>Comparison Table</CardTitle>
+                      <CardDescription>The criteria you choose, as rows — one column per robot.</CardDescription>
+                    </div>
+                    <FieldMultiSelect
+                      fields={availableFields}
+                      selected={selectedFields}
+                      onChange={setSelectedFields}
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {selectedFieldDefs.length === 0 ? (
+                    <p className="text-sm text-slate-500">Choose one or more criteria above to build the table.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-52 sticky left-0 bg-white z-10">Criterion</TableHead>
+                            {compareRobots.map((robot: any) => (
+                              <TableHead key={robot.id} className="min-w-[180px]">
+                                {robot.name}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedFieldDefs.map((field) => (
+                            <TableRow key={field.key}>
+                              <TableCell className="font-medium sticky left-0 bg-white z-10">
+                                {field.label}
+                                {field.unit ? (
+                                  <span className="text-slate-400 text-xs ml-1">({field.unit})</span>
+                                ) : null}
+                              </TableCell>
+                              {compareRobots.map((robot: any) => (
+                                <TableCell key={robot.id} className="align-top">
+                                  {renderCell(robot, field)}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="specs">

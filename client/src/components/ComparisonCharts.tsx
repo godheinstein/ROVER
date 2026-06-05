@@ -16,8 +16,9 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { robotColor, RECOMMENDATION_LABELS, RECOMMENDATION_CLASSES } from "@/lib/robotDisplay";
-import { getField } from "@/lib/robotFields";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { robotColor, RECOMMENDATION_LABELS, RECOMMENDATION_CLASSES, formatFieldValue } from "@/lib/robotDisplay";
+import { getField, type RobotField } from "@/lib/robotFields";
 
 const SCORE_DIMENSIONS: { key: string; label: string }[] = [
   { key: "scoreRos2Support", label: "ROS2" },
@@ -29,14 +30,20 @@ const SCORE_DIMENSIONS: { key: string; label: string }[] = [
   { key: "scoreDexterity", label: "Dexterity" },
 ];
 
-// Numeric specs we surface as bar charts when at least two robots have data.
-const BAR_FIELDS = ["dofTotal", "payloadPerArm", "usablePayload", "batteryHours", "armDof", "reach"];
-
 function hasAnyValue(robots: any[], key: string): boolean {
-  return robots.some((r) => r[key] !== null && r[key] !== undefined && r[key] !== "");
+  return robots.some((r) => {
+    const v = r[key];
+    return v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0);
+  });
 }
 
-export default function ComparisonCharts({ robots }: { robots: any[] }) {
+export default function ComparisonCharts({
+  robots,
+  selectedFields,
+}: {
+  robots: any[];
+  selectedFields: string[];
+}) {
   if (robots.length === 0) return null;
 
   const showRadar = SCORE_DIMENSIONS.some((d) => hasAnyValue(robots, d.key));
@@ -50,7 +57,12 @@ export default function ComparisonCharts({ robots }: { robots: any[] }) {
     return row;
   });
 
-  const barFields = BAR_FIELDS.filter((key) => hasAnyValue(robots, key));
+  // Split the user's selected fields: numeric → bar charts, everything else → a table.
+  const selected = selectedFields
+    .map((k) => getField(k))
+    .filter((f): f is RobotField => Boolean(f));
+  const barFields = selected.filter((f) => f.format === "number" && hasAnyValue(robots, f.key));
+  const tableFields = selected.filter((f) => f.format !== "number" && hasAnyValue(robots, f.key));
 
   return (
     <div className="space-y-6">
@@ -85,19 +97,18 @@ export default function ComparisonCharts({ robots }: { robots: any[] }) {
 
       {barFields.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {barFields.map((key) => {
-            const field = getField(key);
+          {barFields.map((field) => {
             const data = robots.map((r, i) => ({
               name: r.name,
-              value: r[key] ?? 0,
+              value: r[field.key] ?? 0,
               fill: robotColor(i),
             }));
             return (
-              <Card key={key}>
+              <Card key={field.key}>
                 <CardHeader>
                   <CardTitle className="text-base">
-                    {field?.label}
-                    {field?.unit ? ` (${field.unit})` : ""}
+                    {field.label}
+                    {field.unit ? ` (${field.unit})` : ""}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -119,6 +130,49 @@ export default function ComparisonCharts({ robots }: { robots: any[] }) {
             );
           })}
         </div>
+      )}
+
+      {/* Non-numeric selected criteria (ROS2 support, sensors, etc.) can't be a
+          bar chart, so they're shown in a table instead. */}
+      {tableFields.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Other selected criteria</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-white">Criterion</TableHead>
+                    {robots.map((r) => (
+                      <TableHead key={r.id}>{r.name}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tableFields.map((field) => (
+                    <TableRow key={field.key}>
+                      <TableCell className="font-medium sticky left-0 bg-white">
+                        {field.label}
+                        {field.unit ? <span className="text-slate-400 text-xs ml-1">({field.unit})</span> : null}
+                      </TableCell>
+                      {robots.map((r) => (
+                        <TableCell key={r.id} className="align-top text-sm">
+                          {formatFieldValue(r, field)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {barFields.length === 0 && tableFields.length === 0 && (
+        <p className="text-sm text-slate-500">Pick one or more criteria above to chart or tabulate.</p>
       )}
 
       {robots.some((r) => r.recommendation || r.summary) && (
